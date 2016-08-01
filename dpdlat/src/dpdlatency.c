@@ -34,6 +34,9 @@
 #include <sys/types.h>
 #include <sys/resource.h>
 
+//#define APP_STANDALONE
+#define APP_LINUX
+
 /* Configurable parameteres: START */
 #define IOU_SCNTR_ADRS_BASE		0xFF250000 
 #define IOU_SCNTR_ADRS_SIZE		0x10 
@@ -44,6 +47,7 @@
 
 #define MAP_SIZE 4096UL
 #define MAP_MASK (MAP_SIZE - 1)
+
 
 //typedef		__u32		uint32_t;
 //typedef		__s32		int32_t;
@@ -142,6 +146,8 @@ int udelay_sys_counter( volatile unsigned long *pu64_mapped_counter, int us, del
 int cpu_affinity_set(int core)
 {
 
+#ifdef APP_LINUX
+
     int j;
     int ret;
     int num_cpus;
@@ -209,9 +215,10 @@ int cpu_affinity_set(int core)
 	ret = sched_setscheduler(0, SCHED_FIFO, &param);
     assert(ret == 0);
 
+#endif // APP_LINUX
+
     return 0;
 }
-
 
 
 int latency_check( latency_params_t *p_params )
@@ -346,7 +353,7 @@ int latency_check( latency_params_t *p_params )
 			u64_counter_last_average = u64_counter_last_tot/ul_loop;
 			printf("Counter value read 1: %lu=0x%lx.\n", u64_counter_read1, u64_counter_read1);
 			printf("Counter value read 2: %lu=0x%lx.\n", u64_counter_read2, u64_counter_read2);
-			printf("Counter value difference data for %lu us delay:\n", ul_delay_us);
+			printf("Counter value difference data for %lu us delay: %lu\n", ul_delay_us, u64_counter_last);
 			printf("counter value difference minimum: %lu = %lu us.\n",
 						u64_counter_last_min, u64_counter_last_min/IOU_SCNTR_FREQ_MICRO);
 			printf("counter value difference maximum: %lu = %lu us.\n",
@@ -373,7 +380,7 @@ int latency_check( latency_params_t *p_params )
 	u64_counter_last_average = u64_counter_last_tot/ul_loop;
 	printf("Counter value read 1: %lu=0x%lx.\n", u64_counter_read1, u64_counter_read1);
 	printf("Counter value read 2: %lu=0x%lx.\n", u64_counter_read2, u64_counter_read2);
-	printf("Counter value difference data for %lu us delay:\n", ul_delay_us);
+	printf("Counter value difference data for %lu us delay: %lu\n", ul_delay_us, u64_counter_last);
 	printf("counter value difference minimum: %lu = %lu us.\n",
 				u64_counter_last_min, u64_counter_last_min/IOU_SCNTR_FREQ_MICRO);
 	printf("counter value difference maximum: %lu = %lu us.\n",
@@ -389,7 +396,10 @@ int latency_check( latency_params_t *p_params )
 
 int main(int argc, char **argv)
 {
-    int fd_mem;
+
+#ifdef APP_LINUX
+	int fd_mem;
+#endif // APP_LINUX
 	
 	latency_params_t params;
     volatile unsigned long *pu64_mapped_counter;
@@ -398,8 +408,12 @@ int main(int argc, char **argv)
     unsigned long u64_counter_init_delay_end;
     unsigned long u64_counter_init_delay_last;
 
+	delay_params_t delay_params;
+	
+#ifdef APP_LINUX
 	printf("Executable command:%s\n", argv[0] );
 	printf("Process ID:%ld\n", (long)getpid( ) );
+#endif // APP_LINUX
 	printf("Compilation time:%s-%s\n\n", __DATE__,__TIME__);
 	
 	/*
@@ -467,6 +481,7 @@ int main(int argc, char **argv)
     }
 	printf("Test mode(1: busy delay, 2: sleep): %lu.\n", params.ul_mode);
 
+#ifdef APP_LINUX
     //fd_mem = open("/dev/mem", O_RDWR | O_SYNC);
     fd_mem = open("/dev/mem", O_RDWR | O_SYNC);
     if (fd_mem == -1) {
@@ -488,6 +503,11 @@ int main(int argc, char **argv)
 
     }
     printf("Mapped system counter registers at virtual address %p.\n", pu64_mapped_counter);
+#else
+    printf("Use system counter registers as physical address.\n");
+	pu64_mapped_counter = (volatile unsigned long *)IOU_SCNTR_ADRS_BASE;
+#endif   /* APP_LINUX */
+
     printf("System counter frequency: %d.\n", IOU_SCNTR_FREQ);
     printf("System counter value 1: %lu.\n", *pu64_mapped_counter);
     printf("System counter value 2: %lu.\n", *pu64_mapped_counter);
@@ -511,11 +531,29 @@ int main(int argc, char **argv)
     printf("System counter value difference for 1 seconds delay: %lu.\n", u64_counter_init_delay_last);
 	//printf("File: %s, Func: %s, Line: %d.\n", __FILE__, __func__, __LINE__ );
 
+	u64_counter_init_delay_begin = *pu64_mapped_counter;
+	udelay_sys_counter( pu64_mapped_counter, 0, &delay_params );
+	u64_counter_init_delay_end = *pu64_mapped_counter;
+    if( u64_counter_init_delay_end > u64_counter_init_delay_begin ) 
+	{
+		u64_counter_init_delay_last = u64_counter_init_delay_end -u64_counter_init_delay_begin;
+    }
+	else
+	{
+		u64_counter_init_delay_last = u64_counter_init_delay_begin -u64_counter_init_delay_end;
+    }
+    printf("System counter value begin for udelay_sys_counter(): %lu.\n", u64_counter_init_delay_begin);
+    printf("System counter value end for udelay_sys_counter(): %lu.\n", u64_counter_init_delay_end);
+    printf("System counter value difference for udelay_sys_counter(): %lu.\n", u64_counter_init_delay_last);
+
 	// Test latency. Call or Thread?
 	latency_check( &params );
 	
+#ifdef APP_LINUX
 fail_map:
 	//printf("fail_map, File: %s, Func: %s, Line: %d\n", __FILE__, __func__, __LINE__ );
+	munmap( (void *)pu64_mapped_counter, IOU_SCNTR_ADRS_SIZE);
     close(fd_mem);
+#endif   /* APP_LINUX */
     return 0;
 }
