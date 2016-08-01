@@ -1,0 +1,91 @@
+Compilation time:Aug  1 2016-17:00:43
+
+sizeof(int):4
+sizeof(unsigned long):8
+sizeof(long):8
+sizeof(long long):8
+sizeof(unsigned long long):8
+sizeof(void *):8
+
+Usage: dpdlat test-time-in-seconds loop-dealy-time-in-us cpu-affinity-bit-mask test-mode
+time-in-seconds(Default: 10000 seconds)
+loop-dealy-time-in-us(Default: 100 us)
+cpu-affinity-bit-mask(Default: 8, CPU 4)
+test-mode(1: busy delay, 2: sleep, Default: 1)
+Test 10000 seconds
+Delay 100 us in loop
+Test on CPUs: 8=0X8
+Test mode(1: busy delay, 2: sleep): 1.
+Use system counter registers as physical address.
+System counter frequency: 100000000.
+System counter value 1: 0.
+System counter value 2: 0.
+System counter value begin for 1 seconds delay: 9900024.
+System counter value end for 1 seconds delay: 109899100.
+System counter value difference for 1 seconds delay: 99999076.
+System counter value begin for udelay_sys_counter(): 110886133.
+System counter value end for udelay_sys_counter(): 110886401.
+System counter value difference for udelay_sys_counter(): 268.
+
+Test 10000 seconds
+Test 1000000000000 cycles
+Delay 100 us in loop
+Test on CPUs: 8=0X8
+Test mode(1: busy delay, 2: sleep): 1.
+System counter value loop begin: 113666092.
+System counter value loop end: 1000113666092.
+
+Delay 100 us, minimum counter reading loop: 113 at No.0 outer loop.
+
+Delay 100 us, maximum counter reading loop: 113 at No.0 outer loop.
+
+Counter value read 1: 114455546=0x6d273fa.
+Counter value read 2: 114465759=0x6d29bdf.
+counter value difference minimum: 10213 = 102 us at No.0 outer loop.
+delay_params.ul_us = 100
+delay_params.ul_cycles = 10000
+delay_params.ul_counter_begin = 114455637
+delay_params.ul_counter_end = 114465637
+delay_params.ul_counter_read = 114465669
+delay_params.ul_loop = 113
+
+Counter value read 1: 114455546=0x6d273fa.
+Counter value read 2: 114465759=0x6d29bdf.
+counter value difference maximum: 10213 = 102 us at No.0 outer loop.
+
+Counter value read 1: 120289867=0x72b7a4b.
+Counter value read 2: 120300083=0x72ba233.
+counter value difference maximum: 10216 = 102 us at No.1 outer loop.
+
+Counter value read 1: 121703875=0x7410dc3.
+Counter value read 2: 121714087=0x74135a7.
+counter value difference minimum: 10212 = 102 us at No.6 outer loop.
+delay_params.ul_us = 100
+delay_params.ul_cycles = 10000
+delay_params.ul_counter_begin = 121703965
+delay_params.ul_counter_end = 121713965
+delay_params.ul_counter_read = 121713997
+delay_params.ul_loop = 113
+
+Delay 100 us, minimum counter reading loop: 112 at No.96 outer loop.
+
+Counter value read 1: 139765248=0x854a600.
+Counter value read 2: 139775465=0x854cde9.
+counter value difference maximum: 10217 = 102 us at No.1443 outer loop.
+
+Counter value read 1: 298834059=0x11cfd88b.
+Counter value read 2: 298844359=0x11d000c7.
+counter value difference maximum: 10300 = 103 us at No.16797 outer loop.
+
+Delay 100 us, counter reading loop: 113.
+Delay 100 us, minimum counter reading loop: 112.
+Delay 100 us, maximum counter reading loop: 113.
+Delay 100 us, average counter reading loop: 113.
+Counter value read 1: 332698947=0x13d49543.
+Counter value read 2: 332709159=0x13d4bd27.
+Counter value difference data for 100 us delay: 10212
+counter value difference minimum: 10212 = 102 us.
+counter value difference maximum: 10300 = 103 us.
+Counter value difference average: 10213 = 102 us.
+Loop count: 19999.
+

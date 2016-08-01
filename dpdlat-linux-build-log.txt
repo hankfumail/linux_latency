@@ -1,0 +1,20 @@
+17:05:09 **** Auto Build of configuration Debug for project dpdlat ****
+make all 
+'Building file: ../src/dpdlatency.c'
+'Invoking: ARM A53 Linux gcc compiler'
+aarch64-linux-gnu-gcc -Wall -O0 -g3 -c -fmessage-length=0 -MT"src/dpdlatency.o" -MMD -MP -MF"src/dpdlatency.d" -MT"src/dpdlatency.o" -o "src/dpdlatency.o" "../src/dpdlatency.c"
+'Finished building: ../src/dpdlatency.c'
+' '
+'Building target: dpdlat.elf'
+'Invoking: ARM A53 Linux gcc linker'
+aarch64-linux-gnu-gcc  -o "dpdlat.elf"  ./src/dpdlatency.o   
+'Finished building target: dpdlat.elf'
+' '
+'Invoking: ARM A53 Linux Print Size'
+aarch64-linux-gnu-size dpdlat.elf  |tee "dpdlat.elf.size"
+   text	   data	    bss	    dec	    hex	filename
+   9802	    728	      8	  10538	   292a	dpdlat.elf
+'Finished building: dpdlat.elf.size'
+' '
+
+17:05:10 Build Finished (took 981ms)
