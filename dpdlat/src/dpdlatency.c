@@ -38,6 +38,8 @@
 //#define APP_STANDALONE
 #define APP_LINUX
 
+// No memory copy, standalone, read loop average number: 112
+// MEM_COPY_SIZE 32768, standalone, read loop average number: 93
 // MEM_COPY_SIZE 32768, Linux, single DPD application, read loop average number: 102
 // MEM_COPY_SIZE 16384? , Linux, single DPD application, read loop average number: 106
 // MEM_COPY_SIZE 4096? , Linux, single DPD application, read loop average number: 109
@@ -347,7 +349,6 @@ int latency_check( latency_params_t *p_params )
 		printf("System counter value end overflow.\n");
     }
 
-
 	u64_counter_read2 = read_sys_counter( pu64_mapped_counter );
     for(ul_loop=0; u64_counter_read2<u64_counter_end; ul_loop++) {
 		
@@ -357,8 +358,7 @@ int latency_check( latency_params_t *p_params )
 			unsigned long *pu64_mem_src_temp;
 			unsigned long *pu64_mem_dst_temp;
 
-			// void *memcpy( void *dest, const void *src, size_t count );
-			// copy 4KB to generate cache miss and MMU table update
+			// copy data to generate cache miss and MMU table update
 			pu64_mem_src_temp = &pu64_mem_src[u64_mem_test_offset];
 			pu64_mem_dst_temp = &pu64_mem_dst[u64_mem_test_offset];
 			memcpy(pu64_mem_dst_temp, pu64_mem_src_temp, MEM_COPY_SIZE);

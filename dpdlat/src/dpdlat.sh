@@ -2,7 +2,7 @@
 
 #booti 0x80000 0x6000000 0x4000000
 mount /dev/mmcblk0p1 /mnt
-cd mnt
+cd /mnt
 pwd
 ls
 
