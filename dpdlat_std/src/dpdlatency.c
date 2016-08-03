@@ -29,6 +29,7 @@
 #include <pthread.h>   
 #include <assert.h>  
 #include <errno.h>  
+#include <string.h>  
 //#include <sys/mman.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -36,6 +37,12 @@
 
 #define APP_STANDALONE
 //#define APP_LINUX
+
+// MEM_COPY_SIZE 32768, Linux, single DPD application, read loop average number: 102
+// MEM_COPY_SIZE 16384? , Linux, single DPD application, read loop average number: 106
+// MEM_COPY_SIZE 4096? , Linux, single DPD application, read loop average number: 109
+#define MEM_COPY_SIZE 			32768  // 16384   8192, 4092
+#define MEM_COPY_SIZE_KB		(MEM_COPY_SIZE/1024)
 
 /* Configurable parameteres: START */
 #define IOU_SCNTR_ADRS_BASE		0xFF250000 
@@ -69,6 +76,7 @@ typedef struct latency_params {
 	unsigned long ul_mode;
 	unsigned long ul_delay_us;
 	unsigned long ul_test_seconds;
+	unsigned long ul_memory_MB;
 	volatile unsigned long *pu64_mapped_counter;
 }latency_params_t;
 
@@ -140,6 +148,45 @@ int udelay_sys_counter( volatile unsigned long *pu64_mapped_counter, int us, del
 
     return ul_loop;
 }
+
+
+int udelay_begin_sys_counter( volatile unsigned long *pu64_mapped_counter, int us, unsigned long u64_counter_delay_begin, delay_params_t *p_delay_params )
+{
+    unsigned long ul_loop=0;
+    unsigned long ul_delay_cycles;
+    unsigned long u64_counter_delay_end;
+    volatile unsigned long u64_counter_delay_read;
+
+	ul_delay_cycles = us;	
+	ul_delay_cycles = ul_delay_cycles*(IOU_SCNTR_FREQ_MICRO);
+	p_delay_params->ul_us = us;
+	p_delay_params->ul_cycles = ul_delay_cycles;
+
+	u64_counter_delay_end = u64_counter_delay_begin+ul_delay_cycles;
+    if( u64_counter_delay_end < u64_counter_delay_begin ) 
+	{
+		printf("System counter value end overflow.\n");
+    }
+
+	/*
+	delay_params.ul_counter_begin = 141733920517 = 0x20FFFFFF05
+	delay_params.ul_counter_end =   141733930517 = 0x2100002615
+	delay_params.ul_counter_read =  146028888053 = 0x21FFFFFFF5.
+	Counter value read 1: 141940035803 = 0x210C4910DB.
+	*/
+	u64_counter_delay_read = read_sys_counter( pu64_mapped_counter );
+    for( ul_loop=0; u64_counter_delay_read<u64_counter_delay_end; ul_loop++) 
+	{
+		u64_counter_delay_read = read_sys_counter( pu64_mapped_counter );
+    }
+	p_delay_params->ul_counter_begin = u64_counter_delay_begin;
+	p_delay_params->ul_counter_end = u64_counter_delay_end;
+	p_delay_params->ul_counter_read = u64_counter_delay_read;
+	p_delay_params->ul_loop = ul_loop;
+
+    return ul_loop;
+}
+
 
 // Run one time for whole process, or for each thread
 int cpu_affinity_set(int core)
@@ -242,6 +289,9 @@ int latency_check( latency_params_t *p_params )
     unsigned long u64_counter_last_tot=0;
     unsigned long u64_counter_last_average=0;
     volatile unsigned long *pu64_mapped_counter;
+    unsigned long *pu64_mem_src;
+    unsigned long *pu64_mem_dst;
+    unsigned long u64_mem_test_offset=0;
 
 	delay_params_t delay_params;
 
@@ -255,6 +305,36 @@ int latency_check( latency_params_t *p_params )
 	printf("Delay %lu us in loop\n", p_params->ul_delay_us);
 	printf("Test on CPUs: %lu=0X%lx\n", p_params->ul_cpus, p_params->ul_cpus);
 	printf("Test mode(1: busy delay, 2: sleep): %lu.\n", ul_mode);
+	
+    if( p_params->ul_memory_MB < 2 ) 
+	{
+		p_params->ul_memory_MB=2;
+    }
+	else if( p_params->ul_memory_MB > 128 ) 
+	{
+		p_params->ul_memory_MB=128;
+	}
+	else
+	{
+	}
+
+	printf("Memory copy size: %d = %dKB.\n", MEM_COPY_SIZE, MEM_COPY_SIZE_KB);
+ 	pu64_mem_src=malloc(p_params->ul_memory_MB*1024*1024);
+    if( NULL == pu64_mem_src ) 
+	{
+		printf("Failed to allocate source memory.\n");
+		return 0;
+    }
+	printf("Source memory is allocated.\n");
+
+    pu64_mem_dst=malloc(p_params->ul_memory_MB*1024*1024);
+    if( NULL == pu64_mem_dst ) 
+	{
+		printf("Failed to allocate destination memory.\n");
+		free(pu64_mem_src);
+		return 0;
+    }
+	printf("Destination memory is allocated.\n");
 
 	cpu_affinity_set(p_params->ul_cpus);
 
@@ -273,7 +353,16 @@ int latency_check( latency_params_t *p_params )
 		u64_counter_read1 = read_sys_counter( pu64_mapped_counter );
 		if( 1==ul_mode )
 		{
-			ul_delay_loop = udelay_sys_counter( pu64_mapped_counter, ul_delay_us, &delay_params );
+			unsigned long *pu64_mem_src_temp;
+			unsigned long *pu64_mem_dst_temp;
+
+			// copy data to generate cache miss and MMU table update
+			pu64_mem_src_temp = &pu64_mem_src[u64_mem_test_offset];
+			pu64_mem_dst_temp = &pu64_mem_dst[u64_mem_test_offset];
+			memcpy(pu64_mem_dst_temp, pu64_mem_src_temp, MEM_COPY_SIZE);
+			u64_mem_test_offset += MEM_COPY_SIZE/sizeof(unsigned long);
+			u64_mem_test_offset = u64_mem_test_offset%(p_params->ul_memory_MB*(1024-MEM_COPY_SIZE_KB)*1024/sizeof(unsigned long));
+			ul_delay_loop = udelay_begin_sys_counter( pu64_mapped_counter, ul_delay_us, u64_counter_read1, &delay_params );
 		}
 		else
 		{
@@ -286,15 +375,15 @@ int latency_check( latency_params_t *p_params )
 		{
 			ul_delay_loop_min = ul_delay_loop;
 			printf("\n");
-			printf("Delay %lu us, minimum counter reading loop: %lu at No.%lu outer loop.\n",
-					ul_delay_us, ul_delay_loop_min, ul_loop);
+			printf("Delay %lu us, minimum counter reading loop: %lu at No.%lu outer loop, memory offset: %lu.\n",
+					ul_delay_us, ul_delay_loop_min, ul_loop, u64_mem_test_offset);
 		}		
 		if( ul_delay_loop > ul_delay_loop_max ) 
 		{
 			ul_delay_loop_max = ul_delay_loop;
 			printf("\n");
-			printf("Delay %lu us, maximum counter reading loop: %lu at No.%lu outer loop.\n",
-					ul_delay_us, ul_delay_loop_max, ul_loop);
+			printf("Delay %lu us, maximum counter reading loop: %lu at No.%lu outer loop, memory offset: %lu.\n",
+					ul_delay_us, ul_delay_loop_max, ul_loop, u64_mem_test_offset);
 		}
 		ul_delay_loop_tot+=ul_delay_loop;
 		
@@ -312,8 +401,8 @@ int latency_check( latency_params_t *p_params )
 			printf("\n");
 			printf("Counter value read 1: %lu=0x%lx.\n", u64_counter_read1, u64_counter_read1);
 			printf("Counter value read 2: %lu=0x%lx.\n", u64_counter_read2, u64_counter_read2);
-			printf("counter value difference minimum: %lu = %lu us at No.%lu outer loop.\n",
-						u64_counter_last_min, u64_counter_last_min/IOU_SCNTR_FREQ_MICRO, ul_loop);
+			printf("counter value difference minimum: %lu = %lu us at No.%lu outer loop, memory offset: %lu.\n",
+						u64_counter_last_min, u64_counter_last_min/IOU_SCNTR_FREQ_MICRO, ul_loop, u64_mem_test_offset);
 
 			print_var(delay_params.ul_us);
 			print_var(delay_params.ul_cycles);
@@ -329,8 +418,8 @@ int latency_check( latency_params_t *p_params )
 			printf("\n");
 			printf("Counter value read 1: %lu=0x%lx.\n", u64_counter_read1, u64_counter_read1);
 			printf("Counter value read 2: %lu=0x%lx.\n", u64_counter_read2, u64_counter_read2);
-			printf("counter value difference maximum: %lu = %lu us at No.%lu outer loop.\n",
-						u64_counter_last_max, u64_counter_last_max/IOU_SCNTR_FREQ_MICRO, ul_loop);
+			printf("counter value difference maximum: %lu = %lu us at No.%lu outer loop, memory offset: %lu.\n",
+						u64_counter_last_max, u64_counter_last_max/IOU_SCNTR_FREQ_MICRO, ul_loop, u64_mem_test_offset);
 		}
 		u64_counter_last_tot+=u64_counter_last;
 		
@@ -352,7 +441,8 @@ int latency_check( latency_params_t *p_params )
 			u64_counter_last_average = u64_counter_last_tot/ul_loop;
 			printf("Counter value read 1: %lu=0x%lx.\n", u64_counter_read1, u64_counter_read1);
 			printf("Counter value read 2: %lu=0x%lx.\n", u64_counter_read2, u64_counter_read2);
-			printf("Counter value difference data for %lu us delay: %lu\n", ul_delay_us, u64_counter_last);
+			printf("Counter value difference data for %lu us delay: %lu, memory offset: %lu\n", 
+						ul_delay_us, u64_counter_last, u64_mem_test_offset);
 			printf("counter value difference minimum: %lu = %lu us.\n",
 						u64_counter_last_min, u64_counter_last_min/IOU_SCNTR_FREQ_MICRO);
 			printf("counter value difference maximum: %lu = %lu us.\n",
@@ -379,7 +469,8 @@ int latency_check( latency_params_t *p_params )
 	u64_counter_last_average = u64_counter_last_tot/ul_loop;
 	printf("Counter value read 1: %lu=0x%lx.\n", u64_counter_read1, u64_counter_read1);
 	printf("Counter value read 2: %lu=0x%lx.\n", u64_counter_read2, u64_counter_read2);
-	printf("Counter value difference data for %lu us delay: %lu\n", ul_delay_us, u64_counter_last);
+	printf("Counter value difference data for %lu us delay: %lu, memory offset: %lu\n", 
+				ul_delay_us, u64_counter_last, u64_mem_test_offset);
 	printf("counter value difference minimum: %lu = %lu us.\n",
 				u64_counter_last_min, u64_counter_last_min/IOU_SCNTR_FREQ_MICRO);
 	printf("counter value difference maximum: %lu = %lu us.\n",
@@ -434,11 +525,12 @@ int main(int argc, char **argv)
     /* sanity check */
     if(argc<2) 
 	{
-        printf("Usage: dpdlat test-time-in-seconds loop-dealy-time-in-us cpu-affinity-bit-mask test-mode\n");
+        printf("Usage: dpdlat test-time-in-seconds loop-dealy-time-in-us cpu-affinity-bit-mask test-mode test-memory-MB\n");
         printf("time-in-seconds(Default: 10000 seconds)\n");
         printf("loop-dealy-time-in-us(Default: 100 us)\n");
         printf("cpu-affinity-bit-mask(Default: 8, CPU 4)\n");
         printf("test-mode(1: busy delay, 2: sleep, Default: 1)\n");
+        printf("test-memory-MB(memory size used by test, minimum: 2MB, maximum: 128MB)\n");
 
 		params.ul_test_seconds = 10000;
     }
@@ -461,7 +553,6 @@ int main(int argc, char **argv)
     if(argc<4) 
 	{
 		params.ul_cpus = 8;
-        //exit(0);
     }
 	else
 	{
@@ -472,13 +563,22 @@ int main(int argc, char **argv)
     if(argc<5) 
 	{
 		params.ul_mode = 1; // busy delay
-        //exit(0);
     }
 	else
 	{
 		params.ul_mode = strtoul(argv[4], NULL, 10); // 1: busy delay, 2: sleep
     }
 	printf("Test mode(1: busy delay, 2: sleep): %lu.\n", params.ul_mode);
+
+    if(argc<6) 
+	{
+		params.ul_memory_MB = 16; // 
+    }
+	else
+	{
+		params.ul_memory_MB = strtoul(argv[5], NULL, 10); // 1: busy delay, 2: sleep
+    }
+	printf("Test memory size: %lu MB.\n", params.ul_memory_MB);
 
 #ifdef APP_LINUX
     //fd_mem = open("/dev/mem", O_RDWR | O_SYNC);
